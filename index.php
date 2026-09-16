@@ -1,53 +1,59 @@
 <?php
-// Vanilla PHP entry point — start here for a PHP project.
-// The page is rendered on the server; no JavaScript is involved.
 
-require __DIR__ . '/config/db.php';
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $files = $_FILES['files'];
 
-$tasks = [];
-$error = null;
+    // e.g. my-folder/src/app.js -> my-folder
+    $firstPath = str_replace('\\', '/', $files['full_path'][0]);
+    $folderName = explode('/', $firstPath)[0];
 
-try {
-    db_init();
-    $tasks = all_tasks();
-} catch (Throwable $e) {
-    $error = $e->getMessage();
+    $zipPath = tempnam(sys_get_temp_dir(), 'zip_');
+
+    $zip = new ZipArchive();
+
+    $zip->open($zipPath, ZipArchive::CREATE | ZipArchive::OVERWRITE);
+
+    foreach ($files['tmp_name'] as $i => $tmpName) {
+        $relativePath = str_replace('\\', '/', $files['full_path'][$i]);
+
+        $zip->addFile($tmpName, $relativePath);
+    }
+
+    $zip->close();
+
+    header('Content-Type: application/zip');
+    header(
+        'Content-Disposition: attachment; filename="' .
+        $folderName .
+        '.zip"'
+    );
+    header('Content-Length: ' . filesize($zipPath));
+
+    readfile($zipPath);
+    exit;
 }
 
-/** Escape a value for safe output in HTML. */
-function e(string $value): string
-{
-    return htmlspecialchars($value, ENT_QUOTES, 'UTF-8');
-}
 ?>
-<!doctype html>
+
+<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>WSC2026 · Vanilla PHP</title>
-  <link rel="stylesheet" href="styles.css">
+    <meta charset="UTF-8">
+    <title>Folder Zip</title>
 </head>
 <body>
-  <main class="card">
-    <h1>Vanilla <span class="v">PHP</span></h1>
-    <p>WSC2026 Web Technologies — no framework. This page is rendered by
-      <code>index.php</code>, reading MySQL through <code>config/db.php</code>.
-      The connection comes from <code>.env</code> — nothing is hardcoded.</p>
 
-    <?php if ($error !== null): ?>
-      <p class="warn">⚠️ Database not available: <?= e($error) ?></p>
-    <?php else: ?>
-      <ul>
-        <?php foreach ($tasks as $task): ?>
-          <li><?= $task['done'] ? '✅' : '⬜️' ?> <?= e($task['title']) ?></li>
-        <?php endforeach; ?>
-      </ul>
-    <?php endif; ?>
+<form method="POST" enctype="multipart/form-data">
+    <input
+        type="file"
+        name="files[]"
+        webkitdirectory
+        multiple
+        required
+    >
 
-    <p>JSON API: <code>GET api/tasks.php</code> —
-      connection check: <code><a href="api/db-check.php">api/db-check.php</a></code></p>
-    <p class="alt">Building with plain JavaScript instead? → <a href="index.html">index.html</a></p>
-  </main>
+    <button type="submit">Compress</button>
+</form>
+
 </body>
 </html>
